@@ -537,11 +537,16 @@ static void wireguardif_process_data_message(struct wireguard_device *device, st
 
 								// 5. If the plaintext packet has not been dropped, it is inserted into the receive queue of the wg0 interface.
 								if (dest_ok) {
-									// Send packet to be processed by LWIP
-									WG_DEBUG("[WG_RX_IP] Passing %u bytes to IP layer\n", (unsigned)pbuf->tot_len);
-									ip_input(pbuf, device->netif);
-									// pbuf is owned by IP layer now
-									pbuf = NULL;
+						// Send packet to be processed by LWIP.
+						// Use tcpip_input() instead of ip_input() to post the pbuf
+						// to the lwIP TCPIP thread mailbox. ip_input() is only safe
+						// to call from within the TCPIP thread; calling it directly
+						// from ml_wg_mgr_task races with socket operations on other
+						// tasks and corrupts lwIP's internal TCP write state.
+						WG_DEBUG("[WG_RX_IP] Passing %u bytes to IP layer\n", (unsigned)pbuf->tot_len);
+						tcpip_input(pbuf, device->netif);
+						// pbuf is owned by IP layer now
+						pbuf = NULL;
 								} else {
 									WG_DEBUG("[WG_RX_IP] DROPPED: dest_ok=false\n");
 								}
